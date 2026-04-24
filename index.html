@@ -5,88 +5,142 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Mobile Image Viewer</title>
     <style>
-        body { margin: 0; background-color: #000; color: #fff; font-family: sans-serif; overflow-x: hidden; }
-        #gallery { display: flex; flex-direction: column; width: 100%; }
-        .chunk { width: 100%; }
-        img { width: 100%; height: auto; display: block; min-height: 200px; background: #111; border-bottom: 2px solid #000; }
-        .loading { text-align: center; padding: 20px; font-size: 14px; color: #666; }
+        /* CSS tối ưu cho Mobile */
+        body {
+            margin: 0;
+            padding: 0;
+            background-color: #000; /* Nền đen */
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+       #gallery {
+            width: 100%;
+            padding: 15px 10px; 
+            box-sizing: border-box;
+            /* Căn giữa toàn bộ nội dung bên trong gallery */
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        .img-container {
+            width: 100%;
+            margin-bottom: 15px;
+            min-height: 200px;
+            /* Đảm bảo container cũng căn giữa */
+            display: flex;
+            justify-content: center;
+        }
+
+        img {
+            width: 100%; /* Chiếm hết chiều ngang mobile */
+            max-width: 100%; 
+            height: auto;
+            display: block;
+            margin: 0 auto; /* Căn giữa ảnh */
+            border-radius: 12px;
+            object-fit: contain; /* Giữ nguyên tỷ lệ ảnh không bị cắt */
+        }
+
+        /* Loading indicator */
+        #loader {
+            color: #fff;
+            padding: 20px;
+            text-align: center;
+            font-size: 14px;
+        }
     </style>
 </head>
 <body>
 
-<div id="gallery"></div>
-<div id="loader" class="loading">Đang tải thêm...</div>
+    <div id="gallery"></div>
+    <div id="loader">Đang tải thêm...</div>
 
-<script>
-    let masterPool = [];     // Chứa 1000 ảnh từ server
-    let loadedChunks = [];   // Lưu các element div.chunk đang hiển thị
-    const CHUNK_SIZE = 20;
-    const gallery = document.getElementById('gallery');
-    
-    async function fetchMasterData() {
-        const res = await fetch('/get-images');
-        masterPool = await res.json();
-    }
-
-    function createChunk() {
-        if (masterPool.length === 0) return null;
-
-        const chunkData = masterPool.splice(0, CHUNK_SIZE);
-        const chunkDiv = document.createElement('div');
-        chunkDiv.className = 'chunk';
+    <script>
+        const CHUNK_SIZE = 20;
+        const MAX_CHUNKS_IN_DOM = 3;
         
-        chunkData.forEach(src => {
-            const img = document.createElement('img');
-            img.loading = 'lazy'; // Tận dụng lazy load trình duyệt
-            img.src = src;
-            chunkDiv.appendChild(img);
-        });
+        let allUrls = [];
+        let loadedChunks = []; // Lưu trữ reference của các div chunk
+        let currentChunkIndex = 0;
+        let totalChunksToLoad = 0;
 
-        return chunkDiv;
-    }
+        const gallery = document.getElementById('gallery');
+        const loader = document.getElementById('loader');
 
-    async function loadInitial() {
-        await fetchMasterData();
-        // Load 3 chunk đầu tiên
-        for (let i = 0; i < 3; i++) {
-            const chunk = createChunk();
-            if (chunk) {
-                gallery.appendChild(chunk);
-                loadedChunks.push(chunk);
+        // 1. Load data.json và xáo trộn lấy 2000 ảnh
+        async function init() {
+            try {
+                const response = await fetch('data.json');
+                const data = await response.json();
+                
+                // Trộn ngẫu nhiên và lấy 2000
+                allUrls = data.sort(() => 0.5 - Math.random()).slice(0, 2000);
+                totalChunksToLoad = Math.ceil(allUrls.length / CHUNK_SIZE);
+
+                // Load 2 chunk đầu tiên để bắt đầu
+                loadNextChunk();
+                loadNextChunk();
+
+                // Lắng nghe sự kiện cuộn
+                window.addEventListener('scroll', handleScroll);
+            } catch (err) {
+                console.error("Lỗi load dữ liệu:", err);
+                loader.innerText = "Không thể tải dữ liệu.";
             }
         }
-    }
 
-    async function handleScroll() {
-        const scrollBottom = window.innerHeight + window.scrollY;
-        const threshold = document.body.offsetHeight - 1000; // Cách đáy 1000px thì load
-
-        if (scrollBottom >= threshold) {
-            // Kiểm tra nếu masterPool sắp hết thì fetch thêm 1000 ảnh mới
-            if (masterPool.length < CHUNK_SIZE) {
-                await fetchMasterData();
+        // 2. Hàm tạo và chèn một chunk ảnh
+        function loadNextChunk() {
+            if (currentChunkIndex >= totalChunksToLoad) {
+                loader.innerText = "Đã hết ảnh.";
+                return;
             }
 
-            // Thêm chunk mới
-            const newChunk = createChunk();
-            if (newChunk) {
-                gallery.appendChild(newChunk);
-                loadedChunks.push(newChunk);
+            const chunkDiv = document.createElement('div');
+            chunkDiv.className = 'chunk';
+            chunkDiv.dataset.index = currentChunkIndex;
 
-                // Nếu có nhiều hơn 3 chunk, xóa chunk cũ nhất (chunk 1)
-                if (loadedChunks.length > 3) {
-                    const oldChunk = loadedChunks.shift();
-                    // Giữ chiều cao để không bị nhảy scroll (optional)
-                    // Ở đây xóa thẳng để nhẹ máy theo yêu cầu của bạn
-                    oldChunk.remove();
-                    console.log("Đã xóa chunk cũ để giải phóng bộ nhớ");
-                }
+            const start = currentChunkIndex * CHUNK_SIZE;
+            const end = start + CHUNK_SIZE;
+            const chunkData = allUrls.slice(start, end);
+
+            chunkData.forEach(url => {
+                const container = document.createElement('div');
+                container.className = 'img-container';
+                const img = document.createElement('img');
+                img.loading = "lazy"; // Tối ưu trình duyệt
+                img.referrerPolicy = "no-referrer";
+                img.src = url;
+                container.appendChild(img);
+                chunkDiv.appendChild(container);
+            });
+
+            gallery.appendChild(chunkDiv);
+            loadedChunks.push(chunkDiv);
+            currentChunkIndex++;
+
+            // 3. Logic giữ 3 chunk: Xóa chunk cũ nhất nếu vượt quá 3
+            if (loadedChunks.length > MAX_CHUNKS_IN_DOM) {
+                const removedChunk = loadedChunks.shift();
+                // Thay vì xóa hẳn, ta có thể giữ chiều cao để không bị nhảy scroll (optional)
+                // Ở đây xóa hẳn theo yêu cầu của bạn:
+                removedChunk.remove();
             }
         }
-    }
 
-    window.addEventListener('scroll', handleScroll);
-    loadInitial();
-</script>
+        // 4. Kiểm tra khi nào gần cuối trang để load tiếp
+        function handleScroll() {
+            if ((window.innerHeight + window.scrollY) >= document.body.offsetHeight - 1000) {
+                // Nếu đang ở chunk thứ 3 của danh sách hiện tại, nạp thêm
+                loadNextChunk();
+            }
+        }
+
+        init();
+    </script>
 </body>
 </html>
