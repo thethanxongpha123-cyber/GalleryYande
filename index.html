@@ -102,7 +102,7 @@
 
             const chunkDiv = document.createElement('div');
             chunkDiv.className = 'chunk';
-            chunkDiv.dataset.index = currentChunkIndex;
+            chunkDiv.style.width = "100%"; // Đảm bảo chiếm hết chiều ngang
 
             const start = currentChunkIndex * CHUNK_SIZE;
             const end = start + CHUNK_SIZE;
@@ -111,10 +111,19 @@
             chunkData.forEach(url => {
                 const container = document.createElement('div');
                 container.className = 'img-container';
+                
                 const img = document.createElement('img');
-                img.loading = "lazy"; // Tối ưu trình duyệt
+                img.loading = "lazy";
                 img.referrerPolicy = "no-referrer";
                 img.src = url;
+
+                // --- XỬ LÝ LỖI Ở ĐÂY ---
+                img.onerror = function() {
+                    console.warn("Lỗi tải ảnh, đang xóa:", url);
+                    container.remove(); // Xóa cả container chứa ảnh để không bị trống layout
+                };
+                // -----------------------
+
                 container.appendChild(img);
                 chunkDiv.appendChild(container);
             });
@@ -123,11 +132,8 @@
             loadedChunks.push(chunkDiv);
             currentChunkIndex++;
 
-            // 3. Logic giữ 3 chunk: Xóa chunk cũ nhất nếu vượt quá 3
             if (loadedChunks.length > MAX_CHUNKS_IN_DOM) {
                 const removedChunk = loadedChunks.shift();
-                // Thay vì xóa hẳn, ta có thể giữ chiều cao để không bị nhảy scroll (optional)
-                // Ở đây xóa hẳn theo yêu cầu của bạn:
                 removedChunk.remove();
             }
         }
