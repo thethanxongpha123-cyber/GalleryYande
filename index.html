@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Mobile Image Viewer</title>
+    <style>
+        body { margin: 0; background-color: #000; color: #fff; font-family: sans-serif; overflow-x: hidden; }
+        #gallery { display: flex; flex-direction: column; width: 100%; }
+        .chunk { width: 100%; }
+        img { width: 100%; height: auto; display: block; min-height: 200px; background: #111; border-bottom: 2px solid #000; }
+        .loading { text-align: center; padding: 20px; font-size: 14px; color: #666; }
+    </style>
+</head>
+<body>
+
+<div id="gallery"></div>
+<div id="loader" class="loading">Đang tải thêm...</div>
+
+<script>
+    let masterPool = [];     // Chứa 1000 ảnh từ server
+    let loadedChunks = [];   // Lưu các element div.chunk đang hiển thị
+    const CHUNK_SIZE = 20;
+    const gallery = document.getElementById('gallery');
+    
+    async function fetchMasterData() {
+        const res = await fetch('/get-images');
+        masterPool = await res.json();
+    }
+
+    function createChunk() {
+        if (masterPool.length === 0) return null;
+
+        const chunkData = masterPool.splice(0, CHUNK_SIZE);
+        const chunkDiv = document.createElement('div');
+        chunkDiv.className = 'chunk';
+        
+        chunkData.forEach(src => {
+            const img = document.createElement('img');
+            img.loading = 'lazy'; // Tận dụng lazy load trình duyệt
+            img.src = src;
+            chunkDiv.appendChild(img);
+        });
+
+        return chunkDiv;
+    }
+
+    async function loadInitial() {
+        await fetchMasterData();
+        // Load 3 chunk đầu tiên
+        for (let i = 0; i < 3; i++) {
+            const chunk = createChunk();
+            if (chunk) {
+                gallery.appendChild(chunk);
+                loadedChunks.push(chunk);
+            }
+        }
+    }
+
+    async function handleScroll() {
+        const scrollBottom = window.innerHeight + window.scrollY;
+        const threshold = document.body.offsetHeight - 1000; // Cách đáy 1000px thì load
+
+        if (scrollBottom >= threshold) {
+            // Kiểm tra nếu masterPool sắp hết thì fetch thêm 1000 ảnh mới
+            if (masterPool.length < CHUNK_SIZE) {
+                await fetchMasterData();
+            }
+
+            // Thêm chunk mới
+            const newChunk = createChunk();
+            if (newChunk) {
+                gallery.appendChild(newChunk);
+                loadedChunks.push(newChunk);
+
+                // Nếu có nhiều hơn 3 chunk, xóa chunk cũ nhất (chunk 1)
+                if (loadedChunks.length > 3) {
+                    const oldChunk = loadedChunks.shift();
+                    // Giữ chiều cao để không bị nhảy scroll (optional)
+                    // Ở đây xóa thẳng để nhẹ máy theo yêu cầu của bạn
+                    oldChunk.remove();
+                    console.log("Đã xóa chunk cũ để giải phóng bộ nhớ");
+                }
+            }
+        }
+    }
+
+    window.addEventListener('scroll', handleScroll);
+    loadInitial();
+</script>
+</body>
+</html>
